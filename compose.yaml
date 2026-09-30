@@ -1,0 +1,159 @@
+# file: compose.yaml
+name: agent-lab
+services:
+  # ---------- core ----------
+  litellm-db:
+    image: postgres:16
+    profiles: [core]
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+      POSTGRES_DB: litellm
+    volumes: [litellm_db:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 5s
+      retries: 20
+
+  cache-redis:
+    image: valkey/valkey:8
+    profiles: [core]
+
+  litellm-proxy:
+    image: ghcr.io/berriai/litellm:${LITELLM_TAG:-main-stable}
+    profiles: [core]
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
+      STORE_MODEL_IN_DB: "False"
+      PRESIDIO_ANALYZER_API_BASE: http://presidio-analyzer:3000
+      PRESIDIO_ANONYMIZER_API_BASE: http://presidio-anonymizer:3000
+    volumes:
+      - ./litellm:/app/lab:ro
+      - ./litellm/config.yaml:/app/config.yaml:ro
+      - ./litellm/elastic_handler.py:/app/elastic_handler.py:ro
+    ports: ["4000:4000"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      litellm-db: {condition: service_healthy}
+      cache-redis: {condition: service_started}
+      presidio-analyzer: {condition: service_healthy}
+      presidio-anonymizer: {condition: service_healthy}
+
+  edge-gateway:
+    image: caddy:2
+    profiles: [core]
+    ports: ["80:80"]
+    volumes: [./caddy/Caddyfile:/etc/caddy/Caddyfile:ro]
+
+  # ---------- data ----------
+  vector-db:
+    image: pgvector/pgvector:pg16
+    profiles: [data]
+    environment:
+      POSTGRES_USER: kb_admin
+      POSTGRES_PASSWORD: ${VECTOR_DB_PASSWORD}
+      POSTGRES_DB: kb
+    volumes:
+      - vector_db:/var/lib/postgresql/data
+      - ./db/init-vector.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports: ["127.0.0.1:5433:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kb_admin -d kb"]
+      interval: 5s
+      retries: 20
+
+  mcp-kb:
+    build: ./services/mcp-kb
+    profiles: [data]
+    env_file: .env
+    environment:
+      KB_DSN: postgresql://kb_reader:kb_reader_pw@vector-db:5432/kb
+      LITELLM_URL: http://litellm-proxy:4000
+    depends_on:
+      vector-db: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), 2).close()"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  ingest-worker:
+    build: ./services/ingest-worker
+    profiles: [tools]
+    env_file: .env
+    environment:
+      KB_DSN: postgresql://kb_writer:kb_writer_pw@vector-db:5432/kb
+      LITELLM_URL: http://litellm-proxy:4000
+    volumes: [./docs:/docs:ro]
+
+  # ---------- apps ----------
+  idp:
+    image: quay.io/keycloak/keycloak:26.0
+    profiles: [apps]
+    command: ["start-dev", "--http-host=0.0.0.0", "--http-port=8080", "--hostname-strict=false"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports: ["0.0.0.0:8080:8080"]
+
+  agent-api:
+    build: ./services/agent-api
+    profiles: [apps]
+    env_file: .env
+    environment:
+      LITELLM_URL: http://litellm-proxy:4000
+      JWKS_URL: http://idp:8080/realms/lab/protocol/openid-connect/certs
+      JWT_ISSUER: ${KC_ISSUERS:-http://localhost:8080/realms/lab}
+
+  mcp-expert-solution:
+    build: ./services/mcp-expert-solution
+    profiles: [apps]
+    env_file: .env
+    environment:
+      LITELLM_URL: http://litellm-proxy:4000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), 2).close()"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # Step 8. ./services/subscription-service is still empty, so this service is kept in its
+  # own profile: with profiles [apps] the missing Dockerfile fails the whole apps build.
+  # Move it back to [apps] once the service exists.
+  subscription-service:
+    build: ./services/subscription-service
+    profiles: [billing]
+    env_file: .env
+    environment:
+      LITELLM_URL: http://litellm-proxy:4000
+    ports: ["0.0.0.0:8090:8000"]
+
+  # ---------- guard ----------
+  # litellm-proxy calls these on every request (guardrail pii-mark is default_on),
+  # so they must come up with core — not only with the guard profile.
+  presidio-analyzer:
+    image: mcr.microsoft.com/presidio-analyzer:latest
+    profiles: [core, guard]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  presidio-anonymizer:
+    image: mcr.microsoft.com/presidio-anonymizer:latest
+    profiles: [core, guard]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  litellm_db: {}
+  vector_db: {}

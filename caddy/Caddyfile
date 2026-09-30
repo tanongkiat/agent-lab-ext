@@ -1,0 +1,30 @@
+# file: C:\lab\agent-lab-ext\caddy\Caddyfile   (ชื่อไฟล์ Caddyfile ไม่มีนามสกุล)
+{
+  auto_https off
+}
+
+# Channel A: App → agent-api
+http://api.localhost, http://api.lab {
+  @agent path /v1/chat/completions /v1/models
+  handle @agent {
+    reverse_proxy agent-api:8000 {
+      flush_interval -1
+    }
+  }
+  handle {
+    respond "Not Found" 404
+  }
+}
+
+# Channel B1 + B2: Developer → litellm-proxy (เฉพาะ path ที่อนุญาต)
+http://llm.localhost, http://llm.lab {
+  @ok path /v1/chat/completions /v1/responses /v1/messages /v1/embeddings /v1/rerank /v1/models /mcp/expert_*
+  handle @ok {
+    reverse_proxy litellm-proxy:4000 {
+      flush_interval -1
+    }
+  }
+  handle {
+    respond "Not Found" 404
+  }
+}

@@ -1,0 +1,6 @@
+[
+  {"name": "Thai National ID", "supported_language": "en", "supported_entity": "TH_NATIONAL_ID",
+   "patterns": [{"name": "th_id", "regex": "\\b\\d{1}-?\\d{4}-?\\d{5}-?\\d{2}-?\\d{1}\\b", "score": 0.9}]},
+  {"name": "Thai Mobile", "supported_language": "en", "supported_entity": "TH_PHONE",
+   "patterns": [{"name": "th_mobile", "regex": "\\b0[689]\\d-?\\d{3}-?\\d{4}\\b", "score": 0.8}]}
+]

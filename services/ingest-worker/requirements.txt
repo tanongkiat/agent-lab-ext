@@ -1,0 +1,3 @@
+# file: C:\lab\agent-lab-ext\services\ingest-worker\requirements.txt
+openai>=1.40
+psycopg[binary]>=3.2

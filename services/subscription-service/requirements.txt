@@ -1,0 +1,4 @@
+# file: C:\lab\agent-lab-ext\services\subscription-service\requirements.txt
+fastapi>=0.115
+uvicorn[standard]>=0.30
+httpx>=0.27

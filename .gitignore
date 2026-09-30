@@ -1,0 +1,21 @@
+# --- secrets: never commit ---
+.env
+.env.*
+!.env.example
+*.env.bash
+tests/bash/.env.bash
+*.pem
+*.key
+
+# --- local / generated ---
+.venv/
+__pycache__/
+*.py[cod]
+*.bak
+*.bak-*
+*.bak.*
+tests/result-*.txt
+
+# --- os noise ---
+.DS_Store
+Thumbs.db

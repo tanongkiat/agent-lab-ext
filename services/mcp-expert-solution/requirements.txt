@@ -1,0 +1,4 @@
+# file: C:\lab\agent-lab-ext\services\mcp-expert-solution\requirements.txt
+mcp>=1.12,<2
+openai>=1.40
+PyJWT>=2.8

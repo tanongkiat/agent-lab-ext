@@ -1,0 +1,6 @@
+# file: C:\lab\agent-lab-ext\services\agent-api\requirements.txt
+fastapi>=0.115
+uvicorn[standard]>=0.30
+openai>=1.40
+mcp>=1.12,<2
+PyJWT[crypto]>=2.8

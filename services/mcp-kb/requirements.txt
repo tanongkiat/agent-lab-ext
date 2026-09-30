@@ -1,0 +1,5 @@
+# file: C:\lab\agent-lab-ext\services\mcp-kb\requirements.txt
+mcp>=1.12,<2
+httpx>=0.27
+PyJWT>=2.8
+psycopg[binary]>=3.2

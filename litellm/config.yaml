@@ -1,0 +1,83 @@
+# file: litellm/config.yaml
+# ใช้เฉพาะ OpenAI-compatible endpoints จาก .env (OPENAI_COMPATIBLE_<n>_BASE_URL / _API_KEY)
+# ห้ามเปลี่ยนชื่อ model_name (chat-fast, chat-smart, ...) เพราะทุก service และ test เรียกด้วยชื่อนี้
+# แก้แค่ <...-model-id> และเลข endpoint · หรือให้ tests/pick-models.ps1 (ด้านล่าง) เขียน model_list ให้
+model_list:
+  - model_name: elastic-chat
+    litellm_params:
+      model: elastic/anthropic-claude-5-opus-chat_completion-c2rkgqoksl9
+    model_info:
+      access_groups: [tier-pro]
+  - model_name: chat-fast
+    litellm_params:
+      model: openai/glm-5.3-flash
+      api_base: os.environ/OPENAI_COMPATIBLE_2_BASE_URL
+      api_key: os.environ/OPENAI_COMPATIBLE_2_API_KEY
+    model_info:
+      access_groups: [tier-basic, tier-pro]
+  - model_name: chat-smart
+    litellm_params:
+      model: openai/glm-5.3
+      api_base: os.environ/OPENAI_COMPATIBLE_2_BASE_URL
+      api_key: os.environ/OPENAI_COMPATIBLE_2_API_KEY
+    model_info:
+      access_groups: [tier-pro]
+  - model_name: chat-smart-alt
+    litellm_params:
+      model: openai/glm-5.3
+      api_base: os.environ/OPENAI_COMPATIBLE_4_BASE_URL
+      api_key: os.environ/OPENAI_COMPATIBLE_4_API_KEY
+    model_info:
+      access_groups: [tier-pro]
+  - model_name: embed                   # จำนวนมิติต้องตรงกับ vector(N) ใน db/init-vector.sql
+    litellm_params:
+      model: openai/skylark-embedding-vision-251215
+      api_base: os.environ/OPENAI_COMPATIBLE_1_BASE_URL
+      api_key: os.environ/OPENAI_COMPATIBLE_1_API_KEY
+      extra_body: {dimensions: 1024}  # ค่าเริ่มต้น 2048 เกิน 2000 ที่ index hnsw ของ pgvector รับได้
+    model_info:
+      access_groups: [retrieval, tier-basic, tier-pro]
+
+router_settings:
+  routing_strategy: simple-shuffle
+  fallbacks:
+    - {"chat-smart": ["chat-smart-alt"]}
+  redis_host: cache-redis
+  redis_port: 6379
+
+litellm_settings:
+  drop_params: true
+  num_retries: 1
+  request_timeout: 120
+  max_budget: 20                        # เพดาน USD ทั้ง proxy
+  budget_duration: 30d
+  max_end_user_budget_id: plan-free
+  callbacks: ["langfuse"]
+  custom_provider_map:
+    - provider: elastic
+      custom_handler: elastic_handler.elastic_llm
+  # max_end_user_budget_id: plan-free   # เปิดใน Step 2.4
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: false
+
+# mcp_servers: เพิ่มใน Step 4.6 และ Step 6.3
+mcp_servers:
+  kb:
+    url: http://mcp-kb:8080/mcp
+    transport: http
+    allowed_tools: ["search_docs", "get_document"]
+    extra_headers: ["x-mcp-kb-authorization"]
+  expert_solution: # litellm not accept '-' in key name, so use '_' instead
+    url: http://mcp-expert-solution:8080/mcp
+    transport: http
+    allowed_tools: ["ask_solution"]
+guardrails:
+  - guardrail_name: pii-mark
+    litellm_params:
+      guardrail: presidio
+      mode: pre_call
+      default_on: true
+      presidio_ad_hoc_recognizers: /app/lab/presidio-th.json
