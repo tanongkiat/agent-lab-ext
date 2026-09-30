@@ -4,6 +4,7 @@
 !.env.example
 *.env.bash
 tests/bash/.env.bash
+!tests/bash/.env.bash.example
 *.pem
 *.key
 
